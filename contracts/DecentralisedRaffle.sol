@@ -28,34 +28,25 @@ contract DecentralisedRaffle {
     // - What data structure for managing the pot?
     mapping(address => uint256) public playerEntries;
     mapping(address => mapping(uint256 => uint256)) public multipleEntries;
+
+    event Entry(address indexed player, uint256 totalPlayerEntries);
+    event WinnerSelected(address indexed winner, uint256 prize, uint256 raffleId);
+    event RafflePaused(address indexed by);
+    event RaffleUnpaused(address indexed by);
     
     constructor() {
         owner = msg.sender;
         raffleId = 1;
         raffleStartTime = block.timestamp;
         isPaused = false;
+        locked = false;
     }
     
-    // TODO: Implement entry function
-    // Requirements:
-    // - Players pay minimum 0.01 ETH to enter
-    // - Track each entry (not just unique addresses)
-    // - Allow multiple entries per player
-    // - Emit event with player address and entry count
-    function enterRaffle() public payable {
-        // Your implementation here
-        // Validation: Check minimum entry amount
-        // Validation: Check if raffle is active
-        require(msg.value >= 0.01 ether, "Minimum entry amount is 0.01 ETH");
-        require(!isPaused, "Raffle is paused");
-        require(playerEntries[msg.sender] )
-
-        playerEntries[msg.sender] += 1;
-        totalEntries += 1;
-        pot += msg.value;
-
-        emit Entry(msg.sender, playerEntries[msg.sender]);
-
+    modifier noReentrant() {
+        require(!locked, "No reentrancy");
+        locked = true;
+        _;
+        locked = false;
     }
     // TODO: Implement winner selection function
     // Requirements:
@@ -65,23 +56,29 @@ contract DecentralisedRaffle {
     // - Use a secure random mechanism (better than block.timestamp)
     // - Require at least 3 unique players
     // - Require raffle has been active for 24 hours
-    function selectWinner() public onlyOwner {
+    function selectWinner() public onlyOwner noReentrant {
         // Your implementation here
         // CHALLENGE: How do you generate randomness securely?
-        require(totalEntries >= 3, "At least 3 players required");
-        require (block.timestamp >= raffleStartTime + 24 hours, "Raffle must be active for 24 hours");
+        require(players.length >= 3, "At least 3 unique players required");
+        require(block.timestamp >= raffleStartTime + 24 hours, "Raffle must be active for 24 hours");
 
-        uint256 random = uint256(keccak256(abi.encodePacked(block.difficulty, block.timestamp, totalEntries)));
+        uint256 random = uint256(keccak256(abi.encodePacked(block.prevrandao, block.timestamp, totalEntries)));
         uint256 winnerIndex = random % totalEntries;
 
         uint256 prize = (pot * 90) / 100;
         uint256 fee = pot - prize;
         
+        uint256 winnerIndex = random % entries.length;
+        address winner = entries[winnerIndex];
+
+        
+        uint256 currentRaffleId = raffleId;
+        _resetRaffle();
+
         payable(winner).transfer(prize);
         payable(owner).transfer(fee);
-        
-        pot = 0;
-        totalEntries = 0;
+
+        emit WinnerSelected(winner, prize, currentRaffleId);
     }
     
     // TODO: Implement circuit breaker (pause/unpause)
@@ -102,11 +99,15 @@ contract DecentralisedRaffle {
     function pause() public onlyOwner {
         // Your implementation
         isPaused = true;
+
+        emit RafflePaused(msg.sender);
     }
     
     function unpause() public onlyOwner {
         // Your implementation
         isPaused = false;
+
+        emit RaffleUnpaused(msg.sender);
     }
     
     // TODO: Implement reentrancy protection
