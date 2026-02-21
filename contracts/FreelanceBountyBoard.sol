@@ -13,12 +13,39 @@ contract FreelanceBountyBoard {
     // - How will you track freelancers and their skills?
     // - How will you store bounty information?
     // - How will you manage payments?
-    
     address public owner;
+    uint256 public bountyIdCounter;
+    bool private locked; 
+    struct Freelancer {
+        address freelancerAddress;
+        string skill;
+    }
+    struct Bounty {
+        uint256 id;
+        address employer;
+        string description;
+        string skillRequired;
+        uint256 reward;
+        bool isOpen;
+        address assignedFreelancer;
+        string submissionUrl;
+    }
     
+    mapping(address => Freelancer) public freelancers;
+    mapping(uint256 => Bounty) public bounties;
+    mapping(uint256 => mapping(address => bool)) public hasApplied;
+
+    enum bountyStatus { 
+        Open,
+        inProgress,
+        Submitted,
+        Completed,
+        Disputed
+    } 
+
     constructor() {
         owner = msg.sender;
-    }
+    }  
     
     // TODO: Implement registerFreelancer function
     // Requirements:

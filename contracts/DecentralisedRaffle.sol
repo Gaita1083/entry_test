@@ -59,25 +59,36 @@ contract DecentralisedRaffle {
     }
 
     function selectWinner() public onlyOwner noReentrant {
-        require(players.length >= 3, "At least 3 unique players required");
-        require( block.timestamp >= raffleStartTime + 24 hours, "Raffle must be active for 24 hours");
+    require(players.length >= 3, "At least 3 unique players required");
+    require(block.timestamp >= raffleStartTime + 24 hours, "Raffle must be active for 24 hours");
 
-        uint256 random = uint256(keccak256(abi.encodePacked( block.prevrandao, block.timestamp, totalEntries, msg.sender) ));
+    uint256 random = uint256(keccak256(abi.encodePacked(block.prevrandao, block.timestamp, totalEntries, msg.sender)));
 
-        uint256 winnerIndex = random % entries.length;
-        address winner = entries[winnerIndex];
+    uint256 winnerIndex = random % entries.length;
+    address winner = entries[winnerIndex];
 
-        uint256 prize = (pot * 90) / 100;
-        uint256 fee = pot - prize;
+    uint256 prize = (pot * 90) / 100;
+    uint256 fee = pot - prize;
 
-        uint256 currentRaffleId = raffleId;
-        _resetRaffle();
-
-        payable(winner).transfer(prize);
-        payable(owner).transfer(fee);
-
-        emit WinnerSelected(winner, prize, currentRaffleId);
+    for (uint256 i = 0; i < players.length; i++) {
+        delete playerEntries[players[i]];
+        delete hasEntered[players[i]];
     }
+    delete players;
+    delete entries;
+    pot = 0;
+    totalEntries = 0;
+    raffleId += 1;
+    raffleStartTime = block.timestamp;
+
+    (bool sentWinner, ) = payable(winner).call{value: prize}("");
+    require(sentWinner, "Failed to send prize to winner");
+
+    (bool sentOwner, ) = payable(owner).call{value: fee}("");
+    require(sentOwner, "Failed to send fee to owner");
+
+    emit WinnerSelected(winner, prize, raffleId - 1);
+}
 
 
     modifier noReentrant() {
@@ -95,21 +106,6 @@ contract DecentralisedRaffle {
     modifier whenNotPaused() {
         require(!isPaused, "Contract is paused");
         _;
-    }
-
-    function _resetRaffle() internal {
-        raffleId++;
-        raffleStartTime = block.timestamp;
-        totalEntries = 0;
-        pot = 0;
-        delete entries;
-
-        for (uint256 i = 0; i < players.length; i++) {
-            address player = players[i];
-            hasEntered[player] = false;
-            playerEntries[player] = 0;
-        }
-        delete players;
     }
     
     function pause() public onlyOwner {
