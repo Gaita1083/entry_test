@@ -17,15 +17,9 @@ contract DecentralisedRaffle {
     bool private locked; 
 
     address[] public entries;
-
     address[] public players;
+
     mapping(address => bool) public hasEntered; 
-    
-    // TODO: Define additional state variables
-    // Consider:
-    // - How will you track entries?
-    // - How will you store player information?
-    // - What data structure for managing the pot?
     mapping(address => uint256) public playerEntries;
     mapping(address => mapping(uint256 => uint256)) public multipleEntries;
 
@@ -41,37 +35,41 @@ contract DecentralisedRaffle {
         isPaused = false;
         locked = false;
     }
-    
-    modifier noReentrant() {
-        require(!locked, "No reentrancy");
-        locked = true;
-        _;
-        locked = false;
+
+
+    function enterRaffle() public payable whenNotPaused {
+        require(msg.value >= 0.01 ether, "Minimum entry is 0.01 ETH");
+
+        if (!hasEntered[msg.sender]) {
+            hasEntered[msg.sender] = true;
+            players.push(msg.sender);
+        }
+
+        uint256 numEntries = msg.value / 0.01 ether;
+
+        for (uint256 i = 0; i < numEntries; i++) {
+            entries.push(msg.sender);
+        }
+
+        playerEntries[msg.sender] += numEntries;
+        totalEntries += numEntries;
+        pot += msg.value;
+
+        emit Entry(msg.sender, playerEntries[msg.sender]);
     }
-    // TODO: Implement winner selection function
-    // Requirements:
-    // - Only owner can trigger
-    // - Select winner from TOTAL entries (not unique players)
-    // - Winner gets 90% of pot, owner gets 10% fee
-    // - Use a secure random mechanism (better than block.timestamp)
-    // - Require at least 3 unique players
-    // - Require raffle has been active for 24 hours
+
     function selectWinner() public onlyOwner noReentrant {
-        // Your implementation here
-        // CHALLENGE: How do you generate randomness securely?
         require(players.length >= 3, "At least 3 unique players required");
-        require(block.timestamp >= raffleStartTime + 24 hours, "Raffle must be active for 24 hours");
+        require( block.timestamp >= raffleStartTime + 24 hours, "Raffle must be active for 24 hours");
 
-        uint256 random = uint256(keccak256(abi.encodePacked(block.prevrandao, block.timestamp, totalEntries)));
-        uint256 winnerIndex = random % totalEntries;
+        uint256 random = uint256(keccak256(abi.encodePacked( block.prevrandao, block.timestamp, totalEntries, msg.sender) ));
 
-        uint256 prize = (pot * 90) / 100;
-        uint256 fee = pot - prize;
-        
         uint256 winnerIndex = random % entries.length;
         address winner = entries[winnerIndex];
 
-        
+        uint256 prize = (pot * 90) / 100;
+        uint256 fee = pot - prize;
+
         uint256 currentRaffleId = raffleId;
         _resetRaffle();
 
@@ -80,12 +78,15 @@ contract DecentralisedRaffle {
 
         emit WinnerSelected(winner, prize, currentRaffleId);
     }
-    
-    // TODO: Implement circuit breaker (pause/unpause)
-    // Requirements:
-    // - Owner can pause raffle in emergency
-    // - Owner can unpause raffle
-    // - When paused, no entries allowed
+
+
+    modifier noReentrant() {
+        require(!locked, "No reentrancy");
+        locked = true;
+        _;
+        locked = false;
+    }
+
     modifier onlyOwner() {
         require(msg.sender == owner, "Only owner can call this");
         _;
@@ -95,32 +96,54 @@ contract DecentralisedRaffle {
         require(!isPaused, "Contract is paused");
         _;
     }
+
+    function _resetRaffle() internal {
+        raffleId++;
+        raffleStartTime = block.timestamp;
+        totalEntries = 0;
+        pot = 0;
+        delete entries;
+
+        for (uint256 i = 0; i < players.length; i++) {
+            address player = players[i];
+            hasEntered[player] = false;
+            playerEntries[player] = 0;
+        }
+        delete players;
+    }
     
     function pause() public onlyOwner {
-        // Your implementation
         isPaused = true;
 
         emit RafflePaused(msg.sender);
     }
     
     function unpause() public onlyOwner {
-        // Your implementation
         isPaused = false;
 
         emit RaffleUnpaused(msg.sender);
     }
-    
-    // TODO: Implement reentrancy protection
-    // CRITICAL: Prevent reentrancy attacks when sending ETH
-    
-    // Use checks-effects-interactions pattern
-    
-    // TODO: Helper/View functions
-    // - Get current pot balance
-    // - Get player entry count
-    // - Check if raffle is active
-    // - Get unique player count
-    
-    // BONUS: Add multiple prize tiers (1st, 2nd, 3rd place)
-    // BONUS: Add refund mechanism if minimum players not reached
+
+
+    function getPot() public view returns (uint256) {
+        return pot;
+    }
+
+    function getPlayerEntryCount(address player) public view returns (uint256) {
+        return playerEntries[player];
+    }
+
+    function isRaffleActive() public view returns (bool) {
+        return !isPaused;
+    }
+
+    function getUniquePlayerCount() public view returns (uint256) {
+        return players.length;
+    }
+
+    function getTotalEntries() public view returns (uint256) {
+        return entries.length;
+    }
+
 }
+
